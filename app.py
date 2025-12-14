@@ -1,32 +1,45 @@
 import os
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from sentiment import analyze_sentiment
+from telegram import Bot, Update
+from transformers import pipeline
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
+bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
-application = Application.builder().token(TOKEN).build()
+# Load model once (VERY IMPORTANT)
+sentiment_pipeline = pipeline(
+    "sentiment-analysis",
+    model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
+)
 
-async def start(update, context):
-    await update.message.reply_text("سلام! پیام بفرست تا احساسش رو بگم 🙂")
+LABEL_MAP = {
+    "LABEL_0": "منفی 😠",
+    "LABEL_1": "خنثی 😐",
+    "LABEL_2": "مثبت 😊"
+}
 
-async def handle_message(update, context):
-    text = update.message.text
-    result = analyze_sentiment(text)
-    await update.message.reply_text(result)
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    if update.message and update.message.text:
+        text = update.message.text
+
+        result = sentiment_pipeline(text)[0]
+        label = LABEL_MAP.get(result["label"], result["label"])
+        score = round(result["score"], 2)
+
+        reply = f"🧠 تحلیل احساس:\n{label}\n📊 اطمینان: {score}"
+
+        bot.send_message(
+            chat_id=update.message.chat_id,
+            text=reply
+        )
+
+    return "ok"
 
 @app.route("/")
 def home():
     return "Bot is running 🚀"
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "ok"

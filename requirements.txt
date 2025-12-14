@@ -1,5 +1,5 @@
 flask
 python-telegram-bot==20.6
-transformers
-torch
-langdetect
+transformers==4.36.2
+torch==2.0.1
+sentencepiece
